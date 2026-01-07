@@ -32,14 +32,14 @@ def build_canvas_header(
 def send_to_canvas(
         payload: Dict[str, Any],
         client_id: str,
-        private_key: str
+        private_key: str,
+        canvas_url: str,
 ) -> Dict[str, Any]:
-    CANVAS_URL = "https://yourorg.my.salesforce.com/apex/CanvasEndpoint"
 
     headers = build_canvas_header(client_id, private_key)
 
     resp = requests.post(
-        url=CANVAS_URL,
+        url=canvas_url,
         json=payload,
         headers=headers,
         timeout=15,
@@ -48,6 +48,12 @@ def send_to_canvas(
     return resp.json()
 
 st.sidebar.header("Canvas Credentials")
+
+canvas_url = st.sidebar.text_input(
+    label="Canvas Apex Endpoint",
+    placeholder="https://yourorg.my.salesforce.com/apex/CanvasEndpoint",
+    type="default",
+)
 
 client_id = st.sidebar.text_input(
     label="Canvas App Client‑ID",
@@ -88,7 +94,7 @@ def main() -> None:
 
         with st.spinner("Sending…"):
             try:
-                response = send_to_canvas(payload, client_id, private_key)
+                response = send_to_canvas(payload, client_id, private_key, canvas_url)
             except requests.HTTPError as http_err:
                 st.error(f"HTTP error: {http_err}\n{http_err.response.text}")
                 return
