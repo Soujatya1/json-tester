@@ -1,112 +1,69 @@
 import streamlit as st
 import json
-import time
-from typing import Any, Dict
-import jwt
 
-def json_create(obj: Any) -> str:
-    return json.dumps(obj, indent=2, sort_keys=True)
+st.set_page_config(page_title="Streamlit ↔ Salesforce Canvas", layout="wide")
 
-def build_canvas_header(
-        client_id: str,
-        private_key: str
-) -> dict:
+with open("canvas.html", "r", encoding="utf-8") as f:
+    canvas_html = f.read()
 
-    if not client_id or not private_key:
-        raise RuntimeError("Canvas credentials are missing")
+def handle_canvas_msg(msg):
+    channel = msg.get("channel")
+    payload = msg.get("payload")
+    if channel == "to-streamlit":
+        st.session_state["salesforce_response"] = payload
+        st.experimental_rerun()
 
-    now = int(time.time())
-    payload = {
-        "iss": client_id,
-        "sub": "canvas-app-user",
-        "aud": "https://login.salesforce.com",
-        "exp": now + 300,
-    }
-
-    signed_jwt = jwt.encode(payload, private_key, algorithm="RS256")
-    if isinstance(signed_jwt, bytes):
-        signed_jwt = signed_jwt.decode("utf-8")
-
-    return {"Authorization": f"Bearer {signed_jwt}"}
-
-def send_to_canvas(
-        payload: Dict[str, Any],
-        client_id: str,
-        private_key: str,
-        canvas_url: str,
-) -> Dict[str, Any]:
-
-    headers = build_canvas_header(client_id, private_key)
-
-    resp = requests.post(
-        url=canvas_url,
-        json=payload,
-        headers=headers,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-st.sidebar.header("Canvas Credentials")
-
-canvas_url = st.sidebar.text_input(
-    label="Canvas Apex Endpoint",
-    placeholder="https://yourorg.my.salesforce.com/apex/CanvasEndpoint",
-    type="default",
+st.components.v1.html(
+    canvas_html,
+    height=500,
+    width="100%",
+    scrolling=True,
+    # key="canvas_app",
+    #on_message=handle_canvas_msg
 )
 
-client_id = st.sidebar.text_input(
-    label="Canvas App Client‑ID",
-    placeholder="",
-    type="default"
+if "salesforce_response" in st.session_state:
+    st.success("Received response from Salesforce Canvas")
+    st.json(st.session_state["salesforce_response"])
+else:
+    st.info("⏳ Waiting for a response…")
+
+st.markdown("---")
+st.subheader("Send a JSON payload to the Canvas app")
+
+json_input = st.text_area(
+    label="Paste your JSON payload here",
+    height=200,
+    placeholder=""
 )
 
-private_key = st.sidebar.text_area(
-    label="Canvas App Private‑Key",
-    placeholder="",
-    height=200
-)
-
-def main() -> None:
-    st.set_page_config(page_title="Salesforce Canvas JSON Tester", layout="wide")
-
-    st.title("Salesforce Canvas JSON Tester")
-
-    json_input = st.text_area(
-        label="JSON payload",
-        value='',
-        height=350,
-        placeholder='',
-    )
-
+if st.button("Send JSON"):
     try:
-        payload = json.loads(json_input)
-        json_valid = True
-    except json.JSONDecodeError as err:
+        payload = json.loads(json_input or "{}")
+    except json.JSONDecodeError as e:
+        st.error(f"Invalid JSON: {e}")
         payload = None
-        json_valid = False
-        st.error(f"Invalid JSON: {err}")
 
-    if st.button("Send to Canvas") and json_valid:
-        if not client_id or not private_key:
-            st.error("Creds are missing")
-            return
-
-        with st.spinner("Sending…"):
-            try:
-                response = send_to_canvas(payload, client_id, private_key, canvas_url)
-            except requests.HTTPError as http_err:
-                st.error(f"HTTP error: {http_err}\n{http_err.response.text}")
-                return
-            except Exception as exc:
-                st.error(f"{exc}")
-                return
-
-        st.success("Request completed")
-        st.subheader("Payload Sent")
-        st.code(json_create(payload), language="json")
-        st.subheader("Response")
-        st.code(json_create(response), language="json")
-
-if __name__ == "__main__":
-    main()
+    if payload is not None:
+        st.components.v1.html(
+            "",
+            height=0,
+            width=0,
+            js=f"""
+              (function() {{
+                var iframe = document.querySelector('#canvas_app iframe');
+                if (!iframe) {{
+                  console.error("Canvas iframe not found");
+                  return;
+                }}
+                iframe.contentWindow.postMessage(
+                  {{
+                    channel: "from-streamlit",
+                    payload: {json.dumps(payload)}
+                  }},
+                  "*"
+                );
+              }})();
+            """
+        )
+        st.success("✅ Sent JSON to Canvas")
