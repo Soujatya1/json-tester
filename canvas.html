@@ -1,0 +1,74 @@
+<!-- canvas.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Salesforce Canvas – v40.0 Demo</title>
+
+  <!-- 1️⃣  Load the SDK (40.0, “controller.js”) -->
+  <script type="text/javascript" src="/canvas/sdk/js/40.0/controller.js"></script>
+</head>
+<body>
+  <script>
+    // -----------------------------------------------------------------------
+    // 2️⃣  SDK initialization – the function below runs *after* the SDK
+    //      has fully loaded and the Canvas session token is available.
+    // -----------------------------------------------------------------------
+    Sfdc.canvas(function () {
+      // SDK ready!  (this callback is the same as the old “Sfdc.canvas.init()”)
+
+      // ---------------------------------------------------------------------
+      // 3️⃣  Grab the full CanvasRequest (the “msg” object) once the SDK
+      //      has been initialized.  The CanvasRequest contains the
+      //      environment parameters that Salesforce injected into the URL.
+      // ---------------------------------------------------------------------
+      Sfdc.canvas.client.ctx(function (msg) {
+        // msg.context contains the full CanvasRequest in JSON
+        var context = msg.context;
+        var parameters = context.environment.parameters;
+
+        // -------------------------------------------------------------------
+        // 4️⃣  From here you can read any of your custom parameters.
+        //      For the example we grab a “recordId” that Salesforce passes
+        //      when the Canvas app is launched from a record page.
+        // -------------------------------------------------------------------
+        console.log('Canvas SDK loaded.  Received parameters:', parameters);
+
+        var recordId = parameters.recordId || null;   // <-- your specific param
+
+        // -------------------------------------------------------------
+        // 5️⃣  Use the SDK to hit a Salesforce REST endpoint.
+        //      (Replace the URL with whatever you really want.)
+        // -------------------------------------------------------------
+        if (recordId) {
+          // Example: Read the Account record that the user opened
+          var apiUrl = '/services/data/v55.0/sobjects/Account/' + recordId;
+
+          // SDK handles OAuth & the Canvas session automatically
+          Sfdc.canvas.client.rest.get(apiUrl)
+            .then(function (response) {
+              // response.body is the parsed JSON returned by Salesforce
+              window.parent.postMessage({
+                channel: 'salesforce-reply',
+                payload: response.body
+              }, '*');
+            })
+            .catch(function (err) {
+              // In case something goes wrong we still send something back
+              window.parent.postMessage({
+                channel: 'salesforce-reply',
+                payload: { error: err.toString() }
+              }, '*');
+            });
+        } else {
+          // If the expected parameter is missing – just echo a message
+          window.parent.postMessage({
+            channel: 'salesforce-reply',
+            payload: { error: 'Missing recordId parameter' }
+          }, '*');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
